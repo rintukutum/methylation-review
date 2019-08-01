@@ -1,8 +1,12 @@
 rm(list=ls())
+library(plyr)
+library(ggplot2)
+library(reshape)
+source('./func-room.R')
 load('./data/gtf.RData')
 t.out.gene <- list()
 for(i in 1:length(gtf)){
-  library(plyr)
+  
   cat(paste0(i,'. ',names(gtf)[i],'\n'))
   gene.x <- gtf[[i]]
   Class <- sapply(
@@ -23,7 +27,7 @@ for(i in 1:length(gtf)){
                      p.value = tout$p.value
                    )
                  })
-  x.df <- plyr::ldply(
+  x.df <- ldply(
     x.out
   )
   rownames(x.df) <- colnames(gene.x)
@@ -38,7 +42,7 @@ t.out.gene <- lapply(
     x
   }
 )
-gene.stats <- plyr::ldply(
+gene.stats <- ldply(
   t.out.gene
 )
 colnames(gene.stats)[1] <- 'gene'
@@ -66,20 +70,6 @@ rownames(sig.cri) <- 1:nrow(sig.cri)
 
 
 
-extractCoV <- function(x,gene.name){
-  idx.normal <- sapply(
-    rownames(x),
-    function(x){strsplit(x,split = '')[[1]][1]}
-  ) == 'N'
-  coV <- function(x){
-    (sd(x)/mean(x))
-  }
-  normal.x <- apply(x[idx.normal,],2,coV)
-  case.x <- apply(x[!idx.normal,],2,coV)
-  return(
-    data.frame(normal = normal.x,case=case.x)
-  )
-}
 coV <- list()
 for(i in 1:length(gtf)){
   coV[[i]] <- extractCoV(
@@ -87,36 +77,35 @@ for(i in 1:length(gtf)){
     names(gtf)[i]
   )
 }
+
 names(coV) <- names(gtf)
-coV.df <- plyr::ldply(coV)
+coV.df <- ldply(coV)
 idx.nan.n <- is.na(coV.df$normal)
 idx.nan.c <- is.na(coV.df$case)
 coV.df.f <- coV.df[!(idx.nan.c | idx.nan.n),]
-coV.df.f.m <- reshape::melt(coV.df.f)
-coV.order <- unlist(plyr::dlply(
+coV.df.f.m <- melt(coV.df.f)
+coV.order <- unlist(dlply(
   coV.df.f.m,
   '.id',
   function(x){
     median(x[x$variable == 'normal','value'])
   }
 ))
-library(ggplot2)
+
 coV.df.f.m$.id <- factor(
   coV.df.f.m$.id,
   levels = rev(names(coV.order[order(coV.order)]))
 )
-p <- ggplot(coV.df.f.m,aes(variable,value)) +
+png('./figures/variability-300dpi.png',
+    width = 2600,
+    height = 3000,
+    res = 300)
+ggplot(coV.df.f.m,aes(variable,value)) +
   geom_boxplot() +
   facet_wrap(facets = '.id',scales = 'free_y') +
   theme(axis.text.x = element_text(angle=45,hjust = 1,vjust = 1)) +
   ylab('Coefficient of variation(SD/mean)') +
   xlab('Class')
-png('./figures/variability-300dpi.png',
-    width = 2600,
-    height = 3000,
-    res = 300)
-
-p
 dev.off()
 unlist(dlply(coV.df.f.m,
       '.id',

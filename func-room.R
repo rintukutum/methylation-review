@@ -1,3 +1,8 @@
+library(randomForest)
+library(Boruta)
+library(plyr)
+library(reshape)
+library(ggplot2)
 load.data <- function(){
   metadata <- read.csv(
     './data/meta-information.csv',
@@ -8,13 +13,14 @@ load.data <- function(){
     stringsAsFactors = FALSE
   )
   return(
-    list( metadata = metadata,
-          raw.data = raw.data
-          )
+    list(
+      metadata = metadata,
+      raw.data = raw.data
+      )
   )
 }
 getGeneData <- function(){
-  gene.level.data <- plyr::dlply(
+  gene.level.data <- dlply(
     raw.data,
     'Gene_name',
     function(x){
@@ -49,10 +55,7 @@ filterGenePosition <- function(x){
   )
   return(out)
 }
-## feature format
 extractTrainGene <- function(x){
-  #x <- filter.gene.level$ABCA1
-  # feature
   feature.name <- apply(
     x$chr.pos,
     1,
@@ -81,20 +84,23 @@ extractTrainGene <- function(x){
     }
   )
   names(methyl.mat) <- feature.name
-  methyl.df <- plyr::ldply(methyl.mat)
+  methyl.df <- ldply(methyl.mat)
   colnames(methyl.df)[1] <- 'feature'
-  methyl.train <- reshape::cast(methyl.df,sampleID~feature,value='methyl.perc')
+  methyl.train <- cast(
+    methyl.df,
+    sampleID~feature,
+    value='methyl.perc'
+  )
   return(methyl.train)
 }
 fS <- function(x,seed){
-  library(Boruta)
   y <- sapply(rownames(x),function(x){strsplit(x,split='')[[1]][1]})
   org.var <- colnames(x)
   colnames(x) <- paste0('F',1:ncol(x))
   names(org.var) <- colnames(x)
   tr <- data.frame(class=y,x)
   set.seed(seed)
-  br <- Boruta(class~.,data = tr)
+  br <- Boruta(class~., data = tr)
   return(list(org.var = org.var,br=br,tr=tr))
 }
 rM <- function(br.all){
@@ -123,7 +129,6 @@ rM <- function(br.all){
 }
 rMod <- function(mData){
   nFpG <- sapply(mData,function(x){ncol(x$tr)})
-  library(randomForest)
   mod <- list()
   for(i in 1:length(mData)){
     tr <- mData[[i]]$tr
@@ -131,7 +136,7 @@ rMod <- function(mData){
     cat(paste0(i,'. ',names(mData)[i],'\n'))
     set.seed(i+34)
     mod[[i]] <- randomForest(
-      class~.,data=tr,ntree=20000,
+      class~., data=tr, ntree=20000,
       proximity=TRUE,
       importance=TRUE)
   }
@@ -159,7 +164,6 @@ runMOD <- function(rM.data){
       common.s <- intersect(common.s,sampleIDs[[i]])
     }
   }
-  
   abcg1 <- sampleIDs$ABCG1
   abcg1.g <- list()
   for(i in 1:length(sampleIDs)){
@@ -173,7 +177,6 @@ runMOD <- function(rM.data){
     abcg1.g[[i]] <- abc.tmp
   }
   names(abcg1.g) <- names(sampleIDs)
-  
   rdat <- lapply(
     rM.data,
     function(x){
@@ -182,7 +185,6 @@ runMOD <- function(rM.data){
       tr
     }
   )
-  
   for(i in 1:length(rdat)){
     tmp <- rdat[[i]]
     colnames(tmp) <- paste0(
@@ -192,21 +194,19 @@ runMOD <- function(rM.data){
       rdat.mini <- tmp
     }else{
       rdat.mini <- cbind(
-        rdat.mini,tmp
+        rdat.mini, tmp
       )
     }
   }
-  
   class <- sapply(
     rownames(rdat.mini),
     function(x){strsplit(x,split='')[[1]][1]})
   set.seed(562)
-  bt <- Boruta::Boruta(
+  bt <- Boruta(
     x = rdat.mini,
     y = as.factor(class)
   )
   imp.vars <- names(bt$finalDecision[bt$finalDecision %in% c('Tentative','Confirmed')])
-  library(randomForest)
   set.seed(561)
   rMod <- randomForest(
     x=rdat.mini[,imp.vars],
@@ -219,7 +219,6 @@ runMOD <- function(rM.data){
 vMapP1 <- function(rModx){
   md <- MDSplot(rModx,rModx$y)
   mdp <- data.frame(md$points,class=rModx$y)
-  library(ggplot2)
   p1 <- ggplot(mdp,aes(x=Dim.1,y=Dim.2)) +
     geom_point(aes(fill=class),size=3.5,shape=21,alpha=0.65)+
     scale_fill_manual(
@@ -232,7 +231,6 @@ vMapP1 <- function(rModx){
     ) +
     ggtitle(paste0('Accuracy=',100-rModx$err.rate[30000]*100,'%'))+
     theme(legend.position = c(0.15,0.8415))
-  
   xx <- rownames(rModx$importance)[order(rModx$importance[,1])]
   df_ <- data.frame(
     varName = rownames(rModx$importance),
@@ -259,4 +257,20 @@ vMapP2 <- function(rModx){
     ggtitle(paste0('Accuracy=',100-rModx$err.rate[30000]*100,'%')) +
     scale_x_discrete(limit=xx)
   return(p2)
+}
+extractCoV <- function(x,gene.name){
+  idx.normal <- sapply(
+    rownames(x),
+    function(x){strsplit(x,split = '')[[1]][1]}) == 'N'
+  coV <- function(x){
+    (sd(x)/mean(x))
+  }
+  normal.x <- apply(x[idx.normal,],2,coV)
+  case.x <- apply(x[!idx.normal,],2,coV)
+  return(
+    data.frame(
+      normal = normal.x,
+      case=case.x
+    )
+  )
 }

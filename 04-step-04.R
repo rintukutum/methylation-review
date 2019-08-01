@@ -8,6 +8,7 @@ mGenes <- names(rM.data)[idxMgenes]
 mData <- rM.data[idxMgenes]
 rMod(mData)
 rm(list=ls())
+library(plyr)
 load('./data/rMOD.RData')
 rmod <- rMOD$mod
 mdperf <- list()
@@ -17,7 +18,7 @@ for(i in 1:length(rmod)){
   mat$original <- rownames(mat)
   mdperf[[i]] <- mat
 }
-mdperf.df <- plyr::ldply(mdperf)
+mdperf.df <- ldply(mdperf)
 tmp <- mdperf.df[,colnames(mdperf.df)[c(4:5,1:3)]]
 tmp$gene[(seq(1,nrow(tmp),by = 2)-1)[-1]] <- '-'
 write.csv(
